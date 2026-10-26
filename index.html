@@ -222,6 +222,7 @@ sup .fr,sub .fr{font-size:.9em}
 .figure-viewport{overflow:auto;max-height:74vh;background:#fff;border-radius:12px;text-align:center;padding:16px}
 .figure-viewport img{display:block;margin:auto;max-width:100%;max-height:68vh;object-fit:contain}
 @media(max-width:520px){.fig{padding:10px}.fig img{min-height:0;max-height:360px}.fig figcaption{font-size:11px}.figure-dialog{padding:10px}}
+.qnav{flex-wrap:wrap;gap:10px}
 </style>
 </head>
 <body>
@@ -452,6 +453,7 @@ function renderQ(){
       <div class="qnav">
         <button class="btn ghost" id="prev" ${s.i===0?'disabled':''}>← Back</button>
         <span class="kbd"><kbd>1</kbd>–<kbd>4</kbd> answer · <kbd>Enter</kbd> next</span>
+        <button class="btn ghost" id="skip" ${ans?'disabled':''}>${s.i===total-1?'Skip & finish':'Skip →'}</button>
         <button class="btn" id="next" ${ans||!store.settings.instant?'':'disabled'}>${s.i===total-1?'Finish':'Next →'}</button>
       </div>
     </div>
@@ -461,6 +463,7 @@ function renderQ(){
   $('#exit').onclick=()=>{ if(session.answers.some(Boolean)) results(); else home(); };
   $('#prev').onclick=()=>{ if(s.i>0){s.i--;renderQ();} };
   $('#next').onclick=next;
+  $('#skip').onclick=skipQuestion;
   if(ans) paint(ans.pick,!store.settings.instant);
   tick(); window.scrollTo(0,0);
   if(q.t==='M') typeset();
@@ -472,6 +475,7 @@ function choose(i){
   const ok=i===b.correct;
   if(!prev) record(q.id,ok); else if(prev.ok!==ok){ const st0={...st(q.id)}; if(prev.ok){st0.c--;st0.s=Math.max(0,st0.s-1);} else {st0.w--;} store.stats[q.id]=st0; record(q.id,ok); }
   s.answers[s.i]={pick:i,ok,qid:q.id,opts:b.opts,correct:b.correct};
+  const skipButton=$('#skip'); if(skipButton) skipButton.disabled=true;
   if(store.settings.instant){
     paint(i,false);
     if(!ok && s.opt.requeue && !s.requeued.has(s.i)){
@@ -500,6 +504,7 @@ function paint(pick,hideTruth){
     +(!ok&&s.opt.requeue?'<span class="note">This one will come back in a few questions.</span>':'');
   if(q.t==='M') typeset();
 }
+function skipQuestion(){ const s=session; if(!s || s.answers[s.i]) return; if(s.i<s.queue.length-1){s.i++;renderQ();} else results(); }
 function next(){ const s=session; if(!store.settings.instant && !s.answers[s.i]) return; if(s.i<s.queue.length-1){s.i++;renderQ();} else results(); }
 let timerH=null;
 function tick(){ clearInterval(timerH); const f=()=>{const el=$('#timer'); if(!el||!session){clearInterval(timerH);return;} const t=(Date.now()-session.start)/1000|0; el.textContent=`${t/60|0}:${String(t%60).padStart(2,'0')}`;}; f(); timerH=setInterval(f,1000); }
@@ -525,7 +530,7 @@ function results(){
     <div class="score-ring">
       <div class="ring" style="--p:${pct}"><div>${pct}%</div></div>
       <div><h1 style="margin:0">${ok} / ${n} correct on first try</h1>
-      <p class="sub" style="margin:4px 0 0">${n<new Set(s.queue).size?`Stopped after ${n} of ${new Set(s.queue).size} questions · `:''}Time ${t/60|0}m ${t%60}s · ${pct===100?'Full mark. Keep it there.':pct>=90?'Very close to full mark.':'Review the misses below, then retry them.'}</p></div>
+      <p class="sub" style="margin:4px 0 0">${n<new Set(s.queue).size?`Answered ${n} of ${new Set(s.queue).size} questions (${new Set(s.queue).size-n} unanswered) · `:''}Time ${t/60|0}m ${t%60}s · ${pct===100?'Full mark. Keep it there.':pct>=90?'Very close to full mark.':'Review the misses below, then retry them.'}</p></div>
     </div>
     <div class="breakdown">${Object.entries(bySec).map(([k,v])=>`<div class="stat"><b>${v.ok}/${v.n}</b><span>${esc(k)}</span></div>`).join('')}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">
@@ -540,7 +545,7 @@ function results(){
      <div class="a">You: <span class="y">${H(q,a.opts[a.pick])}</span> · Answer: <span class="c">${H(q,a.opts[a.correct])}</span>${q.n?` <span style="color:var(--ink-3)">· ${H(q,q.n)}</span>`:''}</div>
      ${q.e?`<div class="ex">${q.e}</div>`:''}</div>`}).join(''):'<p class="empty">Nothing missed in this session.</p>'}</div>`;
   $('#home').onclick=home;
-  const ids=[...firsts.keys()];
+  const ids=[...new Set(s.queue)];
   $('#again').onclick=()=>start(s.title,ids.map(i=>Q[i]),s.opt);
   if(wrong.length) $('#retry').onclick=()=>start('Retry · '+s.title,wrong.map(a=>Q[a.qid]),{requeue:true});
   window.scrollTo(0,0);
@@ -676,6 +681,7 @@ function simQ(){
       <div class="qnav">
         <button class="btn ghost" id="sim-prev" ${sim.qi===0?'disabled':''}>← Back</button>
         <button class="btn ghost flag ${s.flags[sim.qi]?'on':''}" id="sim-flag">⚑ ${s.flags[sim.qi]?'Flagged':'Flag'}</button>
+        <button class="btn ghost" id="sim-skip" ${pick!=null?'disabled':''}>${last?'Skip & review':'Skip →'}</button>
         <button class="btn" id="sim-next">${last?'Review section':'Next →'}</button>
       </div>
     </div>
@@ -686,13 +692,14 @@ function simQ(){
   document.querySelectorAll('[data-g]').forEach(el=>el.onclick=()=>{sim.qi=+el.dataset.g;simQ();});
   $('#sim-prev').onclick=()=>{ if(sim.qi>0){sim.qi--;simQ();} };
   $('#sim-next').onclick=()=>{ if(!last){sim.qi++;simQ();} else simReview(); };
+  $('#sim-skip').onclick=()=>{if(s.picks[sim.qi]==null){if(!last){sim.qi++;simQ();}else simReview();}};
   $('#sim-flag').onclick=()=>{ s.flags[sim.qi]=!s.flags[sim.qi]; simQ(); };
   $('#sim-submit').onclick=simReview;
   $('#sim-exit').onclick=()=>{ simPause(); home(); };
   simTick(); window.scrollTo(0,0);
 }
 function simPause(){ if(sim&&sim.phase==='q'){ const s=simSec(); s.spent+=(Date.now()-sim.secStart)/1000; sim.phase='paused'; } }
-function simChoose(i){ const s=simSec(); s.picks[sim.qi]=i; document.querySelectorAll('.opt,.ceword').forEach((el,k)=>el.classList.toggle('sel',+el.dataset.i===i)); const g=document.querySelector(`[data-g="${sim.qi}"]`); if(g) g.classList.add('a'); const c=$('.counter'); if(c) c.firstChild.textContent=`${sim.qi+1} / ${s.ids.length} · ${s.picks.filter(x=>x!=null).length} answered · `; }
+function simChoose(i){ const s=simSec(); s.picks[sim.qi]=i; const skipButton=$('#sim-skip'); if(skipButton) skipButton.disabled=true; document.querySelectorAll('.opt,.ceword').forEach((el,k)=>el.classList.toggle('sel',+el.dataset.i===i)); const g=document.querySelector(`[data-g="${sim.qi}"]`); if(g) g.classList.add('a'); const c=$('.counter'); if(c) c.firstChild.textContent=`${sim.qi+1} / ${s.ids.length} · ${s.picks.filter(x=>x!=null).length} answered · `; }
 function simReview(){
   const s=simSec(); const blank=s.picks.filter(x=>x==null).length; const fl=s.flags.filter(Boolean).length;
   const box=document.createElement('div'); box.className='modal';
